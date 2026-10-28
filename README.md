@@ -44,7 +44,7 @@ Admin → **Reset Demo Data** restores the sample data.
    VITE_USE_MOCK=false
    VITE_API_BASE_URL=https://your-api.example.org/api     # or /api with the dev proxy
    ```
-   For local development with their server on another port: `API_PROXY_TARGET=http://localhost:8000 npm run dev`.
+   For local development with their server on another port: `API_PROXY_TARGET=https://newfab.trichurfamilyapostolate.org npm run dev`.
 3. Nothing else changes – every page calls `src/api/index.js`, which switches between `mock/mockApi.js` and `http.js`.
 4. Before going live, confirm the office address, phone, email and the map pin (`src/pages/public/Location.jsx`, `Contact.jsx`, `Home.jsx`).
 
