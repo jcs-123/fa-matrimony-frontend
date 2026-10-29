@@ -79,7 +79,12 @@ export default function Home() {
             {stories.length > 1 && <button className="car-btn l" aria-label="Previous" onClick={() => setOff((off - 1 + stories.length) % stories.length)}><i className="fa-solid fa-chevron-left" /></button>}
             {shown.length > 0 ? (
               shown.map((s) => (
-                <Link key={s.id} className="story" to={`/stories#${s.id}`}><img src={s.img} alt="" /><blockquote>{s.text}<cite>– {s.couple}</cite></blockquote></Link>
+                <Link key={s.id} className="story" to={`/stories#${s.id}`}>
+                  {s.img && !s.img.startsWith('/img/story') && !s.img.startsWith('/img/hero') && !s.img.startsWith('/img/mag') && !s.img.startsWith('/img/banner') ? (
+                    <img src={s.img} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  ) : null}
+                  <blockquote>{s.text}<cite>– {s.couple}</cite></blockquote>
+                </Link>
               ))
             ) : (
               <div className="muted" style={{ padding: '24px', textAlign: 'center', width: '100%' }}>No published stories yet.</div>

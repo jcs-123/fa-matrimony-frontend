@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import api from '../../api';
 import { useAsync } from '../../lib/useAsync';
 import { useToast } from '../../context/ToastContext';
-import { fmt } from '../../lib/utils';
+import { fmt, compressImageFile } from '../../lib/utils';
 import PageHero from '../../components/PageHero';
 import { Loading } from '../../components/ui';
 
@@ -20,15 +20,16 @@ export default function Stories() {
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
-  const onPhotoChange = (e) => {
+  const onPhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
         toast('Please select an image file (JPG, PNG, WebP).');
         return;
       }
-      setPhotoFile(file);
-      setPhotoPreview(URL.createObjectURL(file));
+      const comp = await compressImageFile(file, 1200, 0.82);
+      setPhotoFile(comp);
+      setPhotoPreview(URL.createObjectURL(comp));
     }
   };
 
@@ -83,7 +84,9 @@ export default function Stories() {
           <div className="story-grid">
             {stories.map((s) => (
               <article key={s.id} id={s.id} className={'card s-card' + (open[s.id] ? ' open' : '') + (hash === '#' + s.id ? ' flash' : '')}>
-                <img src={s.img} alt={s.couple} />
+                {s.img && !s.img.startsWith('/img/story') && !s.img.startsWith('/img/hero') && !s.img.startsWith('/img/mag') && !s.img.startsWith('/img/banner') ? (
+                  <img src={s.img} alt={s.couple} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                ) : null}
                 <div className="s-body"><h3>{s.couple}</h3>
                   <small className="muted"><i className="fa-solid fa-ring" /> Married {fmt(s.married)}{s.parish ? ' • ' + s.parish : ''}</small>
                   <blockquote>{s.text}</blockquote>
@@ -94,7 +97,7 @@ export default function Stories() {
           </div>
         )}
         <section className="card share-card" id="share">
-          <div className="share-art"><img src="/img/story3.jpg" alt="" /><q>“Your story may be the sign of hope another family is praying for.”</q></div>
+          <div className="share-art" style={{ background: 'linear-gradient(135deg, var(--wine) 0%, #4a0717 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '36px 24px', minHeight: 220 }}><q style={{ position: 'relative', left: 'auto', right: 'auto', bottom: 'auto', color: '#fff', textAlign: 'center' }}>“Your story may be the sign of hope another family is praying for.”</q></div>
           <form className="share-form" onSubmit={submit}>
             <h2 className="serif wine">Share Your Story</h2>
             <p className="muted">Married through Family Apostolate Matrimony? Tell us your story – our office will contact you before publishing it.</p>

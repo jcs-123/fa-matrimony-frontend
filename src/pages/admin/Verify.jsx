@@ -90,7 +90,17 @@ export default function Verify() {
                 className="btn btn-outline btn-sm"
                 onClick={() => {
                   if (m.idProof?.url) {
-                    window.open(m.idProof.url, '_blank');
+                    const docUrl = m.idProof.url;
+                    if (docUrl.startsWith('data:')) {
+                      const [meta, b64] = docUrl.split(';base64,');
+                      const mime = meta.replace('data:', '') || 'application/pdf';
+                      const bin = atob(b64);
+                      const arr = new Uint8Array(bin.length);
+                      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                      window.open(URL.createObjectURL(new Blob([arr], { type: mime })), '_blank');
+                    } else {
+                      window.open(docUrl, '_blank');
+                    }
                   } else {
                     toast('No document file uploaded');
                   }

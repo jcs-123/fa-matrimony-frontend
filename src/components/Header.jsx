@@ -54,7 +54,7 @@ export default function Header() {
               )}
               <div className={'user-menu' + (menu ? ' open' : '')} ref={ref}>
                 <button className="user-chip" type="button" onClick={() => setMenu((v) => !v)}>
-                  <img src={user.photos?.[0]} alt="" /><span>{user.name}</span><i className="fa-solid fa-chevron-down" style={{ fontSize: 11, marginLeft: 10 }} />
+                  <img src={user.photos?.[0] || '/img/logo.png'} alt="" /><span>{user.name}</span><i className="fa-solid fa-chevron-down" style={{ fontSize: 11, marginLeft: 10 }} />
                 </button>
                 <div className="um-drop">
                   <Link to="/my-profile"><i className="fa-regular fa-user" />My Profile</Link>

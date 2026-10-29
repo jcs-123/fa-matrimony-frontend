@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../../api';
 import { useAsync } from '../../lib/useAsync';
 import { useToast } from '../../context/ToastContext';
-import { addMonths, fmt } from '../../lib/utils';
+import { addMonths, fmt, compressImageFile } from '../../lib/utils';
 
 const STEPS = ['Plan & Register', 'Personal Details', 'Additional Details', 'Upload Documents & Photos', 'Payment', 'Profile Review'];
 const TITLES = ['Register Your Profile', 'Personal Details', 'Additional Details', 'Upload Documents & Photos', 'Payment', 'Profile Review'];
@@ -42,7 +42,10 @@ export default function Register() {
   const [done, setDone] = useState(null);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const previews = useMemo(() => Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v?.type?.startsWith('image/') ? URL.createObjectURL(v) : null])), [files]);
-  const dioceses = look?.dioceses || ['Thrissur Archdiocese'];
+  const dioceses = useMemo(() => {
+    const list = (look?.dioceses || ['Thrissur Archdiocese']).filter((d) => d !== 'Other');
+    return [['', 'Select Diocese'], ...list, 'Other'];
+  }, [look?.dioceses]);
   const validity = `${fmt(new Date())} – ${fmt(addMonths(new Date(), 6))}`;
 
   const validate = (s) => {
@@ -85,13 +88,13 @@ export default function Register() {
     <div className="field"><label>{label} {req && <span className="rq">*</span>}</label><input className={cls(k)} type={type} value={f[k]} onChange={set(k)} placeholder={ph} {...rest} /></div>
   );
   const Select = ({ k, label, req, options }) => (
-    <div className="field"><label>{label} {req && <span className="rq">*</span>}</label><select className={cls(k, 'select')} value={f[k]} onChange={set(k)}>{options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}</select></div>
+    <div className="field"><label>{label} {req && <span className="rq">*</span>}</label><select className={cls(k, 'select')} value={f[k]} onChange={set(k)}>{options.map((o, idx) => { const val = Array.isArray(o) ? o[0] : o; const lbl = Array.isArray(o) ? o[1] : o; return <option key={`${val}-${idx}`} value={val}>{lbl}</option>; })}</select></div>
   );
   const Drop = ([k, icon, title, hint]) => (
     <label key={k} className={'drop' + (files[k] ? ' filled' : '') + (bad.includes(k) ? ' invalid' : '')}>
       {previews[k] && <img className="preview" src={previews[k]} alt="" />}
       <i className={icon} /><b>{files[k] && !previews[k] ? '✓ ' + files[k].name : title}</b>{hint}
-      <input type="file" accept={k === 'idProof' || k === 'parishLetter' ? 'image/*,.pdf' : 'image/*'} onChange={(e) => setFiles({ ...files, [k]: e.target.files[0] })} />
+      <input type="file" accept={k === 'idProof' || k === 'parishLetter' ? 'image/*,.pdf' : 'image/*'} onChange={async (e) => { const f0 = e.target.files[0]; if (!f0) return; const cf = f0.type?.startsWith('image/') ? await compressImageFile(f0, 1200, 0.82) : f0; setFiles((prev) => ({ ...prev, [k]: cf })); }} />
     </label>
   );
 
@@ -154,7 +157,7 @@ export default function Register() {
                     {Field({ k: 'name', label: 'Full Name', req: true, ph: 'Enter your full name' })}
                     {Select({ k: 'gender', label: 'Gender', req: true, options: [['', 'Select Gender'], 'Male', 'Female'] })}
                     {Field({ k: 'dob', label: 'Date of Birth', req: true, type: 'date' })}
-                    {Select({ k: 'diocese', label: 'Diocese', req: true, options: [['', 'Select Diocese'], ...dioceses, 'Other'] })}
+                    {Select({ k: 'diocese', label: 'Diocese', req: true, options: dioceses })}
                     {Field({ k: 'place', label: 'Place', req: true, ph: 'Enter your place' })}
                     {Select({ k: 'parish', label: 'Parish', req: true, options: [['', 'Select Parish'], ...PARISHES] })}
                   </div>
@@ -211,7 +214,7 @@ export default function Register() {
                 </>}
 
                 {step === 4 && <>
-                  <div className="section-band">Upload Photos <small style={{ fontWeight: 400, color: 'var(--muted)' }}>(minimum 3 – JPG/PNG, max 5 MB each)</small></div>
+                  <div className="section-band">Upload Photos <small style={{ fontWeight: 400, color: 'var(--muted)' }}>(minimum 3 photos – JPG, PNG, WebP)</small></div>
                   <div className="upload-grid" style={{ padding: '0 6px 16px' }}>{PHOTO_SLOTS.map(Drop)}</div>
                   <div className="section-band">Upload Documents</div>
                   <div className="upload-grid" style={{ padding: '0 6px 6px' }}>{DOC_SLOTS.map(Drop)}</div>

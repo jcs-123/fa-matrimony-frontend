@@ -8,11 +8,18 @@ import { fmt } from '../../lib/utils';
 import { Loading, Modal } from '../../components/ui';
 import { Seg } from './parts';
 
+const isDummyStoryImg = (url) =>
+  !url ||
+  url.startsWith('/img/story') ||
+  url.startsWith('/img/hero') ||
+  url.startsWith('/img/mag') ||
+  url.startsWith('/img/banner');
+
 const blankStory = () => ({
   couple: '',
   married: '',
   parish: '',
-  img: '/img/story1.jpg',
+  img: '',
   text: '',
   story: '',
   published: true
@@ -82,7 +89,7 @@ export default function Stories() {
       couple: item.couple || '',
       married: item.married || '',
       parish: item.parish || '',
-      img: item.img || '/img/story1.jpg',
+      img: isDummyStoryImg(item.img) ? '' : item.img,
       text: item.text || '',
       story: item.story || '',
       published: item.published !== false
@@ -150,7 +157,7 @@ export default function Stories() {
     openNewModal({
       couple: sub.name,
       married: mDate,
-      img: sub.photo || '/img/story1.jpg',
+      img: isDummyStoryImg(sub.photo) ? '' : sub.photo,
       email: sub.email,
       phone: sub.phone,
       text: sub.message.length > 150 ? sub.message.slice(0, 147) + '...' : sub.message,
@@ -211,11 +218,12 @@ export default function Stories() {
                     gap: 10
                   }}
                 >
-                  {sub.photo && (
+                  {sub.photo && !isDummyStoryImg(sub.photo) && (
                     <img
                       src={sub.photo}
                       alt=""
                       style={{ width: 34, height: 34, borderRadius: 6, objectFit: 'cover', border: '1px solid #d4b5bc' }}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                   )}
                   <div>
@@ -273,18 +281,36 @@ export default function Stories() {
               }}
             >
               <div style={{ position: 'relative' }}>
-                <img
-                  src={s.img || '/img/story1.jpg'}
-                  alt={s.couple}
-                  style={{
-                    width: '100%',
-                    height: 100,
-                    objectFit: 'cover',
-                    borderRadius: 8,
-                    border: '1px solid #e2dcd7'
-                  }}
-                  onError={(e) => { e.target.src = '/img/story1.jpg'; }}
-                />
+                {!isDummyStoryImg(s.img) ? (
+                  <img
+                    src={s.img}
+                    alt={s.couple}
+                    style={{
+                      width: '100%',
+                      height: 100,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid #e2dcd7'
+                    }}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '100%',
+                      height: 100,
+                      borderRadius: 8,
+                      border: '1px solid #e2dcd7',
+                      background: '#fdf7f8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--wine)'
+                    }}
+                  >
+                    <i className="fa-solid fa-heart" style={{ fontSize: 24, opacity: 0.35 }} />
+                  </div>
+                )}
                 <span
                   className={'pill ' + (s.published !== false ? 's-active' : 's-pending')}
                   style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 11, padding: '2px 6px' }}
@@ -414,17 +440,17 @@ export default function Stories() {
               <div className="field">
                 <label>Photo Image</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {form.img && (
+                  {form.img && !isDummyStoryImg(form.img) && (
                     <img
                       src={form.img}
                       alt="Preview"
                       style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, border: '1px solid #d4b5bc', flexShrink: 0 }}
-                      onError={(e) => { e.target.src = '/img/story1.jpg'; }}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                   )}
                   <input
                     className="input"
-                    placeholder="/img/story1.jpg or image URL"
+                    placeholder="Upload photo or paste image URL"
                     value={form.img}
                     onChange={(e) => setForm({ ...form, img: e.target.value })}
                     style={{ flex: 1 }}

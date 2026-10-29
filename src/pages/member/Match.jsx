@@ -115,7 +115,7 @@ export default function Match() {
           <p className="sub">{rest.length} profile{rest.length === 1 ? '' : 's'} in queue</p>
           {rest.slice(0, 5).map((p, k) => (
             <div key={p.id} className={'q-item' + (k ? '' : ' on')} onClick={() => { const d = [...deck]; const [x] = d.splice(idx + k, 1); d.splice(idx, 0, x); setDeck(d); }}>
-              <img src={p.photos[0]} alt="" /><div><b>{p.name}</b><small>{p.age} years<br />{p.diocese}</small></div><i className="fa-solid fa-chevron-right" /></div>
+              <img src={p.photos?.[0] || '/img/logo.png'} alt="" /><div><b>{p.name}</b><small>{p.age} years<br />{p.diocese}</small></div><i className="fa-solid fa-chevron-right" /></div>
           ))}
           {rest.length > 5 && <Link className="q-more" to="/search"><span>+{rest.length - 5}</span>And {rest.length - 5} more profiles in your queue...<i className="fa-solid fa-chevron-right wine" /></Link>}
           <Link className="q-more" to="/chat" style={{ background: '#fff', border: '1px solid var(--line)' }}><span><i className="fa-regular fa-comments" /></span>Your matches: {summary?.matches ?? 0} • Liked you: {summary?.likedMe ?? 0}<i className="fa-solid fa-chevron-right wine" /></Link>

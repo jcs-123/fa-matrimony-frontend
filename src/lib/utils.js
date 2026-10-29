@@ -37,16 +37,46 @@ export const STATUS_LABEL = {
   on_hold: 'On Hold', married: 'Married', rejected: 'Rejected'
 };
 
-export const fileToDataUrl = (file, max = 480) => new Promise((res) => {
+export const compressImageFile = (file, max = 1200, quality = 0.8) => new Promise((resolve) => {
+  if (!file || !file.type?.startsWith('image/')) return resolve(file);
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const s = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * s);
+    c.height = Math.round(img.height * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob(
+      (blob) => {
+        if (!blob) return resolve(file);
+        const outName = file.name ? file.name.replace(/\.[^.]+$/, '.jpg') : 'photo.jpg';
+        resolve(new File([blob], outName, { type: 'image/jpeg', lastModified: Date.now() }));
+      },
+      'image/jpeg',
+      quality
+    );
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+  img.src = url;
+});
+
+export const fileToDataUrl = (file, max = 800, quality = 0.78) => new Promise((res) => {
   if (!file || !file.type?.startsWith('image/')) return res(null);
   const img = new Image();
+  const url = URL.createObjectURL(file);
   img.onload = () => {
+    URL.revokeObjectURL(url);
     const s = Math.min(1, max / Math.max(img.width, img.height));
-    const c = document.createElement('canvas'); c.width = img.width * s; c.height = img.height * s;
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.82));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * s);
+    c.height = Math.round(img.height * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    res(c.toDataURL('image/jpeg', quality));
   };
-  img.onerror = () => res(null);
-  img.src = URL.createObjectURL(file);
+  img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+  img.src = url;
 });
 
 export const completion = (m) => {
