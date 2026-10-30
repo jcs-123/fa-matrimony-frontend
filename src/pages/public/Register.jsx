@@ -7,8 +7,6 @@ import { addMonths, fmt, compressImageFile } from '../../lib/utils';
 
 const STEPS = ['Plan & Register', 'Personal Details', 'Additional Details', 'Upload Documents & Photos', 'Payment', 'Profile Review'];
 const TITLES = ['Register Your Profile', 'Personal Details', 'Additional Details', 'Upload Documents & Photos', 'Payment', 'Profile Review'];
-const PARISHES = ['Our Lady of Lourdes Cathedral, Thrissur', "St. Antony's Church, Punkunnam", "St. Sebastian's Church, Punkunnam", 'Basilica of Our Lady of Dolours', 'Other'];
-const EDU = ['B.Tech / M.Tech', 'MBBS / MD', 'M.Sc Nursing', 'M.A / M.Sc', 'MBA', 'B.Com / M.Com', 'B.Pharm', 'Other'];
 const INTERESTS = ['📖 Reading', '🎵 Music', '✈ Travel', '🤝 Volunteering', '🌿 Gardening', '🍳 Cooking', '⛪ Choir', '🏏 Sports', '🎨 Art', '📸 Photography'];
 const PAY = [['Office', 'fa-solid fa-hand-holding-heart', 'Pay ₹ 500 at the Family Apostolate office – admin will confirm and activate']];
 const PHOTO_SLOTS = [['photo1', 'fa-regular fa-id-badge', 'Passport-size Photo *', 'Front facing, plain background', true], ['photo2', 'fa-solid fa-person', 'Full-length Photo *', 'Standing, full figure visible', true], ['photo3', 'fa-solid fa-camera-rotate', 'Any Other Angle *', 'Side or casual photo', true]];
@@ -17,16 +15,11 @@ const DOC_SLOTS = [['idProof', 'fa-regular fa-id-card', 'ID Proof *', 'Aadhaar /
 const INIT = {
   name: '', gender: '', dob: '', diocese: '', place: '', parish: '', email: '', mobile: '', password: '',
   height: '', weight: '', bloodGroup: '', community: 'Syro-Malabar', maritalStatus: 'Never Married', motherTongue: 'Malayalam',
-  eduGroup: EDU[0], job: '', employer: '', income: 'Prefer not to say', location: '', languages: '',
+  eduGroup: '', job: '', employer: '', income: 'Prefer not to say', location: '', languages: '',
   father: '', mother: '', familyType: 'Nuclear', brothers: '', sisters: '', familyPhone: '',
   prefAge: '24 – 30', prefEdu: 'Any', prefLoc: 'Within Kerala', about: ''
 };
-const REQUIRED = { 1: ['name', 'gender', 'dob', 'diocese', 'place', 'parish', 'email', 'mobile', 'password'], 2: ['height', 'job', 'location'], 3: [], 4: ['photo1', 'photo2', 'photo3', 'idProof'], 5: [] };
-
-function jobGroupOf(job) {
-  const j = job.toLowerCase();
-  return /engineer|developer/.test(j) ? 'Engineer' : /doctor|physician|surgeon/.test(j) ? 'Doctor' : /nurse/.test(j) ? 'Nurse' : /teacher|lecturer|professor/.test(j) ? 'Teacher' : /bank/.test(j) ? 'Bank Officer' : /pharma/.test(j) ? 'Pharmacist' : /account/.test(j) ? 'Accountant' : 'Business';
-}
+const REQUIRED = { 1: ['name', 'gender', 'dob', 'diocese', 'place', 'parish', 'email', 'mobile', 'password'], 2: ['height', 'eduGroup', 'job', 'location'], 3: [], 4: ['photo1', 'photo2', 'photo3', 'idProof'], 5: [] };
 
 export default function Register() {
   const toast = useToast();
@@ -40,12 +33,28 @@ export default function Register() {
   const [bad, setBad] = useState([]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => {
+    const val = e.target.value;
+    if (k === 'diocese') {
+      setF({ ...f, diocese: val, parish: '' });
+    } else {
+      setF({ ...f, [k]: val });
+    }
+  };
   const previews = useMemo(() => Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v?.type?.startsWith('image/') ? URL.createObjectURL(v) : null])), [files]);
-  const dioceses = useMemo(() => {
-    const list = (look?.dioceses || ['Thrissur Archdiocese']).filter((d) => d !== 'Other');
-    return [['', 'Select Diocese'], ...list, 'Other'];
-  }, [look?.dioceses]);
+  const dioceses = useMemo(() => [['', 'Select Diocese'], ...(look?.dioceses || [])], [look?.dioceses]);
+  const parishes = useMemo(() => {
+    const pList = look?.parishList || [];
+    if (pList.length > 0) {
+      const filtered = f.diocese
+        ? pList.filter((p) => !p.diocese || p.diocese.toLowerCase() === f.diocese.toLowerCase())
+        : pList;
+      return [['', 'Select Parish'], ...filtered.map((p) => p.name)];
+    }
+    return [['', 'Select Parish'], ...(look?.parishes || [])];
+  }, [look?.parishList, look?.parishes, f.diocese]);
+  const eduOptions = useMemo(() => [['', 'Select Qualification'], ...(look?.eduGroups || [])], [look?.eduGroups]);
+  const jobOptions = useMemo(() => [['', 'Select Profession / Job'], ...(look?.jobGroups || [])], [look?.jobGroups]);
   const validity = `${fmt(new Date())} – ${fmt(addMonths(new Date(), 6))}`;
 
   const validate = (s) => {
@@ -70,7 +79,7 @@ export default function Register() {
     const fields = {
       name: f.name.trim(), gender: f.gender, dob: f.dob, email: f.email.trim().toLowerCase(), password: f.password, mobile: '+91 ' + f.mobile.replace(/\D/g, ''),
       diocese: f.diocese, parish: f.parish, place: f.place, community: f.community, maritalStatus: f.maritalStatus, motherTongue: f.motherTongue,
-      height: +f.height, weight: f.weight ? +f.weight : null, bloodGroup: f.bloodGroup, eduGroup: f.eduGroup, education: f.eduGroup, job: f.job, jobGroup: jobGroupOf(f.job),
+      height: +f.height, weight: f.weight ? +f.weight : null, bloodGroup: f.bloodGroup, eduGroup: f.eduGroup, education: f.eduGroup, job: f.job, jobGroup: f.job,
       employer: f.employer, income: f.income, location: f.location, languages: f.languages || 'Malayalam',
       family: { father: f.father, mother: f.mother, type: f.familyType, brothers: f.brothers, sisters: f.sisters, phone: f.familyPhone, native: f.place },
       interests: ints.map((x) => x.replace(/^\S+\s/, '')),
@@ -159,7 +168,7 @@ export default function Register() {
                     {Field({ k: 'dob', label: 'Date of Birth', req: true, type: 'date' })}
                     {Select({ k: 'diocese', label: 'Diocese', req: true, options: dioceses })}
                     {Field({ k: 'place', label: 'Place', req: true, ph: 'Enter your place' })}
-                    {Select({ k: 'parish', label: 'Parish', req: true, options: [['', 'Select Parish'], ...PARISHES] })}
+                    {Select({ k: 'parish', label: 'Parish', req: true, options: parishes })}
                   </div>
                   <div className="section-band">Account Information</div>
                   <div className="grid g3">
@@ -181,8 +190,8 @@ export default function Register() {
                   </div>
                   <div className="section-band">Education &amp; Career</div>
                   <div className="grid g3">
-                    {Select({ k: 'eduGroup', label: 'Highest Qualification', req: true, options: EDU })}
-                    {Field({ k: 'job', label: 'Profession / Job', req: true, ph: 'e.g. Software Engineer' })}
+                    {Select({ k: 'eduGroup', label: 'Highest Qualification', req: true, options: eduOptions })}
+                    {Select({ k: 'job', label: 'Profession / Job', req: true, options: jobOptions })}
                     {Field({ k: 'employer', label: 'Employer / Place of Work', ph: 'Company / Hospital' })}
                     {Select({ k: 'income', label: 'Annual Income', options: ['Prefer not to say', 'Below 3 Lakh', '3 – 6 Lakh', '6 – 12 Lakh', 'Above 12 Lakh'] })}
                     {Field({ k: 'location', label: 'Current Location', req: true, ph: 'City, State / Country' })}
@@ -207,7 +216,7 @@ export default function Register() {
                   <div className="section-band">Partner Preferences &amp; About Me</div>
                   <div className="grid g3">
                     {Select({ k: 'prefAge', label: 'Preferred Age', options: ['21 – 26', '24 – 30', '27 – 33', '30 – 36'] })}
-                    {Select({ k: 'prefEdu', label: 'Preferred Qualification', options: ['Any', 'Graduate & above', 'Post-graduate'] })}
+                    {Select({ k: 'prefEdu', label: 'Preferred Qualification', options: ['Any', ...(look?.eduGroups || [])] })}
                     {Select({ k: 'prefLoc', label: 'Preferred Location', options: ['Within Kerala', 'Anywhere in India', 'Abroad'] })}
                   </div>
                   <div className="field" style={{ padding: '0 6px' }}><label>About Me</label><textarea className="input" rows="3" value={f.about} onChange={set('about')} placeholder="A few lines about your faith, family and what you seek in a partner…" /></div>
@@ -245,7 +254,7 @@ export default function Register() {
                       <h3 className="p-name" style={{ fontSize: 28 }}>{f.name || 'Your Profile'}</h3>
                       <p className="muted" style={{ fontSize: 14, margin: '6px 0 12px' }}>Please check every detail. After submission, the office will verify your documents and payment. You will receive an email &amp; SMS once your profile is approved.</p>
                       <ul className="check-list">
-                        {[[f.name && f.email, `${f.name || '—'} • ${f.gender || '—'} • ${f.diocese || '—'}`], [f.job, `${f.eduGroup} • ${f.job || 'profession missing'}`],
+                        {[[f.name && f.email, `${f.name || '—'} • ${f.gender || '—'} • ${f.diocese || '—'}`], [f.job, `${f.eduGroup || 'qualification missing'} • ${f.job || 'profession missing'}`],
                           [files.photo1 && files.photo2 && files.photo3 && files.idProof, `${['photo1', 'photo2', 'photo3'].filter((k) => files[k]).length} of 3 photos ${files.idProof ? '+ ID proof' : '(ID proof missing)'}`],
                           [true, 'Payment: pay ₹ 500 at the Family Apostolate office (admin will confirm)']].map(([ok, t], i) => (
                           <li key={i}><i className={'fa-solid ' + (ok ? 'fa-check' : 'fa-exclamation')} style={ok ? {} : { background: '#c2560c' }} />{t}</li>))}

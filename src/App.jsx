@@ -29,6 +29,7 @@ import Reports from './pages/admin/Reports';
 import Enquiries from './pages/admin/Enquiries';
 import AdminStories from './pages/admin/Stories';
 import Moderation from './pages/admin/Moderation';
+import Lookups from './pages/admin/Lookups';
 
 function ScrollTop() {
   const { pathname } = useLocation();
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="members" element={<Members />} />
           <Route path="verify" element={<Verify />} />
           <Route path="verify/:id" element={<Verify />} />
+          <Route path="lookups" element={<Lookups />} />
           <Route path="holds" element={<Holds />} />
           <Route path="married" element={<Married />} />
           <Route path="reports" element={<Reports />} />

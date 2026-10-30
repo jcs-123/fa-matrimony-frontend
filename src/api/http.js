@@ -7,6 +7,8 @@ import { compressImageFile, fileToDataUrl } from '../lib/utils';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 let token = null;
+const profileCache = new Map();
+const inFlightProfiles = new Map();
 
 export class ApiError extends Error { constructor(message, status = 400, data) { super(message); this.status = status; this.data = data; } }
 
@@ -90,6 +92,29 @@ async function syncMemberPhotos(memberId, files = {}) {
     const idProofDataUrl = files.idProof ? await readFileAsDataUrl(files.idProof) : null;
     const parishLetterDataUrl = files.parishLetter ? await readFileAsDataUrl(files.parishLetter) : null;
     if (dataUrls.length || idProofDataUrl || parishLetterDataUrl) {
+      if (token) {
+        try {
+          const patchPayload = {};
+          if (dataUrls.length) patchPayload.photos = dataUrls;
+          if (idProofDataUrl) {
+            patchPayload.idProof = {
+              type: 'Aadhaar / ID',
+              file: files.idProof?.name || 'id-proof.pdf',
+              verified: false,
+              url: idProofDataUrl
+            };
+          }
+          if (parishLetterDataUrl) {
+            patchPayload.parishLetter = {
+              file: files.parishLetter?.name || 'parish-letter.pdf',
+              url: parishLetterDataUrl
+            };
+          }
+          await patch(`/admin/members/${memberId}`, patchPayload);
+        } catch {
+          // ignore if current token is not admin
+        }
+      }
       await post('/__sync-member-photos', {
         id: memberId,
         photos: dataUrls,
@@ -103,7 +128,13 @@ async function syncMemberPhotos(memberId, files = {}) {
 }
 
 export const httpApi = {
-  setToken(t) { token = t; },
+  setToken(t) {
+    if (token !== t) {
+      profileCache.clear();
+      inFlightProfiles.clear();
+    }
+    token = t;
+  },
 
   // auth & password reset
   login: (b) => post('/auth/login', b),
@@ -113,9 +144,49 @@ export const httpApi = {
   verifyPasswordResetOtp: (email, otp) => post('/auth/forgot-password/verify-otp', { email, otp }),
   resetPasswordWithOtp: (email, otp, newPassword) => post('/auth/forgot-password/reset', { email, otp, newPassword }),
 
-  // public
-  getLookups: () => get('/lookups'),
+  // public & master lookups strictly from MongoDB
+  getLookups: async () => {
+    const remote = await get('/lookups');
+    const jobGroups = Array.isArray(remote?.jobGroups) ? remote.jobGroups : [];
+    const parishes = Array.isArray(remote?.parishes) ? remote.parishes : [];
+    const eduGroups = Array.isArray(remote?.eduGroups) ? remote.eduGroups : [];
+    const dioceses = Array.isArray(remote?.dioceses) ? remote.dioceses : [];
+
+    return {
+      ...(remote || {}),
+      jobGroups,
+      jobs: jobGroups,
+      jobList: Array.isArray(remote?.jobList) ? remote.jobList : [],
+      parishes,
+      parishList: Array.isArray(remote?.parishList) ? remote.parishList : [],
+      eduGroups,
+      educationList: Array.isArray(remote?.educationList) ? remote.educationList : [],
+      dioceses,
+      dioceseList: Array.isArray(remote?.dioceseList) ? remote.dioceseList : [],
+      settings: remote?.settings || { planFee: 500, planMonths: 6, reminderDays: 30, maxHoldMonths: 6 }
+    };
+  },
+
+  // Real-time MongoDB CRUD for Jobs, Parishes, Educations & Dioceses
+  getJobs: () => get('/jobs'),
+  createJob: async (b) => { const r = await post('/jobs', b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  updateJob: async (id, b) => { const r = await patch(`/jobs/${id}`, b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  deleteJob: async (id) => { const r = await del(`/jobs/${id}`); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+
+  getParishes: () => get('/parishes'),
+  createParish: async (b) => { const r = await post('/parishes', b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  updateParish: async (id, b) => { const r = await patch(`/parishes/${id}`, b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  deleteParish: async (id) => { const r = await del(`/parishes/${id}`); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+
+  getEducations: () => get('/educations'),
+  createEducation: async (b) => { const r = await post('/educations', b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  updateEducation: async (id, b) => { const r = await patch(`/educations/${id}`, b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  deleteEducation: async (id) => { const r = await del(`/educations/${id}`); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+
   getDioceses: () => get('/dioceses'),
+  createDiocese: async (b) => { const r = await post('/dioceses', b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  updateDiocese: async (id, b) => { const r = await patch(`/dioceses/${id}`, b); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
+  deleteDiocese: async (id) => { const r = await del(`/dioceses/${id}`); window.dispatchEvent(new Event('fa:lookups-changed')); return r; },
   getPublicStats: () => get('/stats/public'),
   getArticles: () => get('/articles'),
   getArticle: (id) => get(`/articles/${id}`),
@@ -151,8 +222,30 @@ export const httpApi = {
   },
 
   // member – own account
-  getMyProfile: () => get('/me/profile'),
-  getSummary: () => get('/me/summary'),
+  getMyProfile: async () => {
+    const m = await get('/me/profile');
+    if (m && m.stats) {
+      const totalLikedMe = m.stats.totalLikedMe ?? ((m.stats.likedMe || 0) + (m.stats.matches || 0));
+      m.stats = {
+        ...m.stats,
+        pendingLikedMe: m.stats.likedMe || 0,
+        likedMe: totalLikedMe
+      };
+    }
+    return m;
+  },
+  getSummary: async () => {
+    const s = await get('/me/summary');
+    if (s) {
+      const totalLikedMe = s.totalLikedMe ?? ((s.likedMe || 0) + (s.matches || 0));
+      return {
+        ...s,
+        pendingLikedMe: s.likedMe || 0,
+        likedMe: totalLikedMe
+      };
+    }
+    return s;
+  },
   markNotificationsRead: () => post('/me/notifications/read'),
   renew: (data) => post('/me/renew', data),
   requestHold: (b) => post('/me/hold', b),
@@ -162,8 +255,45 @@ export const httpApi = {
 
   // member – discovery
   discover: (filters) => get('/me/discover', filters),
-  getProfile: (id) => get(`/profiles/${id}`),
-  decide: (id, type) => post(`/profiles/${id}/decision`, { type }),
+  getProfile: async (id) => {
+    const cacheKey = `${token || 'anon'}:${id}`;
+    if (profileCache.has(cacheKey)) {
+      return { ...profileCache.get(cacheKey) };
+    }
+    if (inFlightProfiles.has(cacheKey)) {
+      const data = await inFlightProfiles.get(cacheKey);
+      return { ...data };
+    }
+    const promise = get(`/profiles/${id}`, { trackView: '1' })
+      .then((data) => {
+        if (data) profileCache.set(cacheKey, data);
+        inFlightProfiles.delete(cacheKey);
+        return data;
+      })
+      .catch((err) => {
+        inFlightProfiles.delete(cacheKey);
+        throw err;
+      });
+    inFlightProfiles.set(cacheKey, promise);
+    const data = await promise;
+    return { ...data };
+  },
+  decide: async (id, type) => {
+    const res = await post(`/profiles/${id}/decision`, { type });
+    const cacheKey = `${token || 'anon'}:${id}`;
+    if (profileCache.has(cacheKey)) {
+      const cached = profileCache.get(cacheKey);
+      profileCache.set(cacheKey, {
+        ...cached,
+        relation: {
+          ...(cached.relation || {}),
+          myDecision: type,
+          mutual: !!res?.mutual
+        }
+      });
+    }
+    return res;
+  },
   reportProfile: (id, reason) => post(`/profiles/${id}/report`, { reason }),
   blockMember: (id, reason) => post(`/me/block/${id}`, { reason }),
   unblockMember: (id) => post(`/me/unblock/${id}`),
@@ -204,6 +334,20 @@ export const httpApi = {
     fd.append('index', index);
     fd.append('photo', file);
     return request('POST', `/admin/members/${id}/photos`, undefined, { form: fd });
+  },
+  replaceDocument: async (id, file, field = 'idProof') => {
+    const dataUrl = await readFileAsDataUrl(file);
+    if (!dataUrl) throw new ApiError('Could not read document file');
+    const m = await get(`/admin/members/${id}`);
+    const existing = m?.[field] || {};
+    return patch(`/admin/members/${id}`, {
+      [field]: {
+        ...existing,
+        type: existing.type || 'Aadhaar / ID',
+        file: file.name || existing.file || 'id-proof.pdf',
+        url: dataUrl
+      }
+    });
   },
   listHolds: (status) => get('/admin/holds', { status }),
   decideHold: (id, b) => post(`/admin/members/${id}/hold/decision`, b),

@@ -12,5 +12,12 @@ export function useAsync(fn, deps = []) {
     return () => { alive = false; };
   }, deps);
   useEffect(run, [run]);
+  useEffect(() => {
+    const isLookupQuery = String(fn).includes('getLookups');
+    if (!isLookupQuery) return undefined;
+    const onChanged = () => { run(); };
+    window.addEventListener('fa:lookups-changed', onChanged);
+    return () => window.removeEventListener('fa:lookups-changed', onChanged);
+  }, [fn, run]);
   return { ...s, reload: run, setData: (d) => set((p) => ({ ...p, data: typeof d === 'function' ? d(p.data) : d })) };
 }

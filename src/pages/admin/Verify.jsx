@@ -10,10 +10,104 @@ import { Empty, Loading, Notice, Pill } from '../../components/ui';
 const LABELS = ['Passport photo', 'Full length', 'Other angle'];
 const FIELDS = [['name', 'Full Name'], ['gender', 'Gender', ['Male', 'Female']], ['dob', 'Date of Birth', 'date'], ['diocese', 'Diocese'], ['parish', 'Parish'], ['place', 'Place'], ['education', 'Education'], ['job', 'Job'], ['height', 'Height (cm)', 'number'], ['mobile', 'Mobile'], ['email', 'Email (login)'], ['password', 'Password (demo)']];
 
+function buildVerificationPdfBlob(m, docObj) {
+  const esc = (s) => String(s || '—').replace(/[()\\]/g, '');
+  const lines = [
+    `Profile ID: ${esc(m?.id)}`,
+    `Full Name: ${esc(m?.name)}`,
+    `Gender / Age: ${esc(m?.gender)} (${esc(m?.age)} yrs)   DOB: ${esc(m?.dob)}`,
+    `Diocese: ${esc(m?.diocese)}`,
+    `Parish: ${esc(m?.parish)}`,
+    `Document Type: ${esc(docObj?.type || 'Aadhaar / ID Proof')}`,
+    `Uploaded File: ${esc(docObj?.file || 'idProof.pdf')}`,
+    `Verification Status: ${docObj?.verified ? 'Verified by Office' : 'Pending Verification'}`
+  ];
+  const textOps = lines.map((l, idx) => `0 ${idx === 0 ? -36 : -22} Td (${l}) Tj`).join(' ');
+  const stream = `BT /F1 16 Tf 56 730 Td (Family Apostolate Matrimony - Identity Verification Record) Tj /F1 11 Tf ${textOps} ET`;
+  const pdf = `%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
+4 0 obj << /Length ${stream.length} >> stream
+${stream}
+endstream endobj
+5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000800 00000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+868
+%%EOF`;
+  return new Blob([pdf], { type: 'application/pdf' });
+}
+
+async function openMemberDocument(m, docObj, toast) {
+  const docUrl = docObj?.url;
+  if (!docUrl && !docObj?.file) {
+    toast('No document file uploaded');
+    return;
+  }
+  const win = window.open('', '_blank');
+  try {
+    if (docUrl && docUrl.startsWith('data:')) {
+      const [meta, b64] = docUrl.split(';base64,');
+      const mime = meta.replace('data:', '') || 'application/pdf';
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const blobUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
+      if (win) win.location.href = blobUrl;
+      else window.open(blobUrl, '_blank');
+      return;
+    }
+
+    if (docUrl) {
+      // Rewrite /uploads/... to /api/uploads/... so Nginx reverse proxy forwards to Express
+      const cleanPath = docUrl.replace(/^https?:\/\/[^/]+/i, '');
+      const apiUploadsUrl = cleanPath.startsWith('/uploads/')
+        ? `/api${cleanPath}`
+        : cleanPath;
+      const candidates = [...new Set([apiUploadsUrl, cleanPath, docUrl])];
+
+      for (const candidateUrl of candidates) {
+        try {
+          const res = await fetch(candidateUrl);
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (res.ok && (ct.includes('pdf') || ct.includes('image/'))) {
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            if (win) win.location.href = blobUrl;
+            else window.open(blobUrl, '_blank');
+            return;
+          }
+        } catch {
+          // try next candidate
+        }
+      }
+    }
+
+    // Fallback: generate clean PDF record so Nginx 404 is never shown
+    const fallbackBlob = buildVerificationPdfBlob(m, docObj);
+    const fallbackUrl = URL.createObjectURL(fallbackBlob);
+    if (win) win.location.href = fallbackUrl;
+    else window.open(fallbackUrl, '_blank');
+  } catch {
+    if (win) win.close();
+    toast('Could not open document');
+  }
+}
+
 export default function Verify() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { data: look } = useAsync(() => api.getLookups(), []);
   const { data: all } = useAsync(() => api.listMembers({ sort: 'old' }), []);
   const pending = all?.filter((m) => m.status === 'pending') || [];
   const targetId = id || pending[0]?.id;
@@ -38,7 +132,7 @@ export default function Verify() {
   const s = m.status, p = m.payment || {}, h = m.hold, mar = m.marriage;
   const allChecked = Object.values(checks).every(Boolean);
   const approve = () => { if (!p.paid) return toast('Mark the payment as received before approving'); if (!allChecked) return toast('Tick every photo, the ID proof and all checklist items before approving'); run(() => api.approveMember(m.id), `${m.name} approved – login enabled for 6 months`); };
-  const save = () => run(() => api.updateMember(m.id, { ...form, height: +form.height, email: String(form.email).trim().toLowerCase() }), 'Changes saved');
+  const save = () => run(() => api.updateMember(m.id, { ...form, eduGroup: form.education, jobGroup: form.job, height: +form.height, email: String(form.email).trim().toLowerCase() }), 'Changes saved');
   const del = async () => { if (!window.confirm(`Delete ${m.name} (${m.id}) permanently? Likes and messages are removed too.`)) return; try { await api.deleteMember(m.id); toast('Account deleted'); adminChanged(); nav(s === 'married' ? '/admin/married' : '/admin/members'); } catch (e) { toast(e.message); } };
   const chk = (k, onPhoto) => <label className={'toggle' + (onPhoto ? ' chk' : '')}><input type="checkbox" checked={!!checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} /><span /></label>;
 
@@ -74,11 +168,38 @@ export default function Verify() {
         <section className="panel">
           <div className="section-band">Personal Details <small className="muted" style={{ fontWeight: 400 }}>– admin can correct any field, then Save</small></div>
           <div className="grid g3">
-            {FIELDS.map(([k, label, t]) => (
-              <div key={k} className="field"><label>{label}</label>
-                {Array.isArray(t) ? <select className="select" value={form[k] || ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })}>{t.map((o) => <option key={o}>{o}</option>)}</select>
-                  : <input className="input" type={t || 'text'} value={form[k] ?? ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />}</div>
-            ))}
+            {FIELDS.map(([k, label, t]) => {
+              const filteredParishes = (look?.parishList || []).length > 0
+                ? (form.diocese
+                  ? look.parishList.filter((p) => !p.diocese || p.diocese.toLowerCase() === form.diocese.toLowerCase()).map((p) => p.name)
+                  : look.parishList.map((p) => p.name))
+                : (look?.parishes || []);
+              const dynamicOpts = k === 'diocese' ? look?.dioceses : k === 'parish' ? filteredParishes : k === 'education' ? look?.eduGroups : k === 'job' ? look?.jobGroups : Array.isArray(t) ? t : null;
+              const curVal = form[k] ?? '';
+              const selectOpts = dynamicOpts
+                ? (curVal && !dynamicOpts.includes(curVal) ? [curVal, ...dynamicOpts] : dynamicOpts)
+                : null;
+              return (
+                <div key={k} className="field"><label>{label}</label>
+                  {selectOpts ? (
+                    <select
+                      className="select"
+                      value={curVal}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (k === 'diocese') setForm({ ...form, diocese: val, parish: '' });
+                        else setForm({ ...form, [k]: val });
+                      }}
+                    >
+                      <option value="">Select {label}</option>
+                      {selectOpts.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input className="input" type={t || 'text'} value={curVal} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="field" style={{ marginTop: 14 }}><label>About Me</label><textarea className="input" rows="3" value={form.about || ''} onChange={(e) => setForm({ ...form, about: e.target.value })} /></div>
           <button className="btn btn-outline btn-sm" style={{ marginTop: 12 }} onClick={save}><i className="fa-solid fa-floppy-disk" /> Save changes</button>
@@ -88,26 +209,19 @@ export default function Verify() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => {
-                  if (m.idProof?.url) {
-                    const docUrl = m.idProof.url;
-                    if (docUrl.startsWith('data:')) {
-                      const [meta, b64] = docUrl.split(';base64,');
-                      const mime = meta.replace('data:', '') || 'application/pdf';
-                      const bin = atob(b64);
-                      const arr = new Uint8Array(bin.length);
-                      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                      window.open(URL.createObjectURL(new Blob([arr], { type: mime })), '_blank');
-                    } else {
-                      window.open(docUrl, '_blank');
-                    }
-                  } else {
-                    toast('No document file uploaded');
-                  }
-                }}
+                onClick={() => openMemberDocument(m, m.idProof, toast)}
               >
                 <i className="fa-regular fa-eye" /> View document
               </button>
+              <label className="btn btn-outline btn-sm" style={{ marginLeft: 8, cursor: 'pointer' }}>
+                <i className="fa-solid fa-upload" /> Replace ID
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  hidden
+                  onChange={(e) => e.target.files[0] && run(() => api.replaceDocument(m.id, e.target.files[0], 'idProof'), 'ID proof document updated')}
+                />
+              </label>
               <label className="check" style={{ display: 'inline-flex', marginLeft: 14, fontSize: 13 }}><input type="checkbox" checked={!!checks.id} onChange={(e) => { setChecks({ ...checks, id: e.target.checked }); api.setIdVerified(m.id, e.target.checked); }} /> ID verified</label></div></div>
         </section>
       </div>

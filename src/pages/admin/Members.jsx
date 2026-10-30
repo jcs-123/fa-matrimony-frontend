@@ -94,17 +94,41 @@ export default function Members() {
 
 function AddMember({ open, onClose, onSaved }) {
   const toast = useToast();
-  const { data: look } = useAsync(() => api.getLookups(), []);
+  const { data: look, reload: reloadLookups } = useAsync(() => api.getLookups(), []);
+  useEffect(() => { if (open) reloadLookups(); }, [open, reloadLookups]);
   const blank = { name: '', gender: 'Male', dob: '', diocese: '', parish: '', place: '', mobile: '', email: '', password: 'welcome123', eduGroup: '', job: '', height: '', paid: false };
   const [f, setF] = useState(blank);
   const [photos, setPhotos] = useState([]);
   const [idProof, setIdProof] = useState(null);
   const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  const set = (k) => (e) => {
+    const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    if (k === 'diocese') {
+      setF({ ...f, diocese: val, parish: '' });
+    } else {
+      setF({ ...f, [k]: val });
+    }
+  };
+  const filteredParishes = (look?.parishList || []).length > 0
+    ? (f.diocese
+      ? look.parishList.filter((p) => !p.diocese || p.diocese.toLowerCase() === f.diocese.toLowerCase()).map((p) => p.name)
+      : look.parishList.map((p) => p.name))
+    : (look?.parishes || []);
   const save = async (e) => {
     e.preventDefault(); setBusy(true);
     try {
-      await api.createMember({ ...f, diocese: f.diocese || look?.dioceses[0], eduGroup: f.eduGroup || look?.eduGroups[0], height: +f.height || 165 }, { photos, idProof });
+      const selectedJob = f.job || look?.jobGroups?.[0] || '';
+      const selectedEdu = f.eduGroup || look?.eduGroups?.[0] || '';
+      await api.createMember({
+        ...f,
+        diocese: f.diocese || look?.dioceses?.[0] || '',
+        parish: f.parish || filteredParishes[0] || '',
+        eduGroup: selectedEdu,
+        education: selectedEdu,
+        job: selectedJob,
+        jobGroup: selectedJob,
+        height: +f.height || 165
+      }, { photos, idProof });
       toast('Member added – open it to verify & approve'); setF(blank); setPhotos([]); onSaved();
     } catch (e2) { toast(e2.message, 4000); } finally { setBusy(false); }
   };
@@ -117,10 +141,12 @@ function AddMember({ open, onClose, onSaved }) {
           {I('name', 'Full Name', true)}
           <div className="field"><label>Gender <span className="rq">*</span></label><select className="select" value={f.gender} onChange={set('gender')}><option>Male</option><option>Female</option></select></div>
           {I('dob', 'Date of Birth', true, 'date')}
-          <div className="field"><label>Diocese</label><select className="select" value={f.diocese} onChange={set('diocese')}>{look?.dioceses.map((d) => <option key={d}>{d}</option>)}</select></div>
-          {I('parish', 'Parish')}{I('place', 'Place')}{I('mobile', 'Mobile', false, 'tel')}{I('email', 'Email (login)', true, 'email')}{I('password', 'Password', true)}
-          <div className="field"><label>Education</label><select className="select" value={f.eduGroup} onChange={set('eduGroup')}>{look?.eduGroups.map((d) => <option key={d}>{d}</option>)}</select></div>
-          {I('job', 'Job')}{I('height', 'Height (cm)', false, 'number')}
+          <div className="field"><label>Diocese</label><select className="select" value={f.diocese} onChange={set('diocese')}><option value="">Select Diocese</option>{look?.dioceses?.map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
+          <div className="field"><label>Parish</label><select className="select" value={f.parish} onChange={set('parish')}><option value="">Select Parish</option>{filteredParishes.map((p) => <option key={p} value={p}>{p}</option>)}</select></div>
+          {I('place', 'Place')}{I('mobile', 'Mobile', false, 'tel')}{I('email', 'Email (login)', true, 'email')}{I('password', 'Password', true)}
+          <div className="field"><label>Education</label><select className="select" value={f.eduGroup} onChange={set('eduGroup')}>{look?.eduGroups?.map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
+          <div className="field"><label>Job / Profession</label><select className="select" value={f.job} onChange={set('job')}><option value="">Select Job</option>{look?.jobGroups?.map((j) => <option key={j} value={j}>{j}</option>)}</select></div>
+          {I('height', 'Height (cm)', false, 'number')}
           <div className="field"><label>Photos (min 3)</label><input className="input" type="file" multiple accept="image/*" style={{ paddingTop: 8 }} onChange={(e) => setPhotos([...e.target.files])} /></div>
           <div className="field"><label>ID Proof</label><input className="input" type="file" accept="image/*,.pdf" style={{ paddingTop: 8 }} onChange={(e) => setIdProof(e.target.files[0])} /></div>
           <div className="field"><label>&nbsp;</label><label className="check"><input type="checkbox" checked={f.paid} onChange={set('paid')} /> ₹500 paid at office</label></div>

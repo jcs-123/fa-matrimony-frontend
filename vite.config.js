@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
+import { createRequire } from 'node:module';
+
+const requireBackend = createRequire(import.meta.url);
 
 const FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
   <rect width="240" height="240" fill="#f9eff1"/>
@@ -52,7 +55,8 @@ function saveDataUrlToFile(dataUrl, targetPath) {
 }
 
 function uploadsAndSyncPlugin(apiTarget) {
-  const localBackendUploads = path.resolve(process.cwd(), '../fa-matrimony-backend/uploads');
+  const localBackendDir = path.resolve(process.cwd(), '../fa-matrimony-backend');
+  const localBackendUploads = path.resolve(localBackendDir, 'uploads');
   const photosDir = path.join(localBackendUploads, 'photos');
   const docsDir = path.join(localBackendUploads, 'documents');
   [localBackendUploads, photosDir, docsDir].forEach((d) => {
@@ -62,6 +66,28 @@ function uploadsAndSyncPlugin(apiTarget) {
       // ignore
     }
   });
+
+  // Clear old hardcoded default 'Thrissur Archdiocese' on existing parishes if that diocese is not in DB
+  (async () => {
+    try {
+      const [dRes, pRes] = await Promise.all([
+        fetch(`${apiTarget}/api/dioceses`).then((r) => r.json()).catch(() => ({})),
+        fetch(`${apiTarget}/api/parishes`).then((r) => r.json()).catch(() => ({}))
+      ]);
+      const dioceseNames = new Set((dRes?.data || []).map((d) => String(d.name || '').toLowerCase()));
+      for (const p of pRes?.data || []) {
+        if (p.diocese === 'Thrissur Archdiocese' && !dioceseNames.has('thrissur archdiocese')) {
+          await fetch(`${apiTarget}/api/parishes/${encodeURIComponent(p.id || p._id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ diocese: '' })
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // ignore
+    }
+  })();
 
   return {
     name: 'uploads-local-and-sync',
@@ -109,14 +135,30 @@ function uploadsAndSyncPlugin(apiTarget) {
                     }
                   }
 
+                  const patchPayload = {};
                   if (Array.isArray(photos) && photos.length > 0) {
+                    patchPayload.photos = photos;
+                  }
+                  if (idProofDataUrl) {
+                    patchPayload.idProof = {
+                      ...(member?.idProof || { type: 'Aadhaar / ID', verified: false }),
+                      url: idProofDataUrl
+                    };
+                  }
+                  if (parishLetterDataUrl) {
+                    patchPayload.parishLetter = {
+                      ...(member?.parishLetter || {}),
+                      url: parishLetterDataUrl
+                    };
+                  }
+                  if (Object.keys(patchPayload).length > 0) {
                     await fetch(`${apiTarget}/api/admin/members/${id}`, {
                       method: 'PATCH',
                       headers: {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${token}`
                       },
-                      body: JSON.stringify({ photos })
+                      body: JSON.stringify(patchPayload)
                     });
                   }
                 }

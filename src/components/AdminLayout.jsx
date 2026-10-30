@@ -7,6 +7,7 @@ import api from '../api';
 const TITLES = [
   ['/admin/members', 'Registrations', 'All members – sorted by registration date'],
   ['/admin/verify', 'Verify Registration', 'Check details, photos, ID proof and payment before approving'],
+  ['/admin/lookups', 'Job, Parish & Education', 'Add, edit or remove Jobs, Parishes, Education & Dioceses used in dropdowns'],
   ['/admin/holds', 'Hold Requests', 'Members who asked to pause their account for a period'],
   ['/admin/married', 'Married – Delete Accounts', 'Members who reported their marriage – verify and delete'],
   ['/admin/reports', 'Monthly Reports', 'Active, inactive, on-hold, married and pending members – month by month'],
@@ -30,6 +31,7 @@ export default function AdminLayout() {
     ['/admin', 'fa-solid fa-gauge-high', 'Dashboard', null, true],
     ['/admin/members', 'fa-solid fa-users', 'Registrations', sum?.counts?.pending],
     ['/admin/verify', 'fa-solid fa-user-check', 'Verify Profile'],
+    ['/admin/lookups', 'fa-solid fa-list-check', 'Job, Parish & Edu'],
     ['/admin/holds', 'fa-solid fa-circle-pause', 'Hold Requests', sum?.holdRequests],
     ['/admin/married', 'fa-solid fa-ring', 'Married – Delete', sum?.marriedToDelete],
     ['/admin/reports', 'fa-solid fa-chart-column', 'Monthly Reports'],
